@@ -1,0 +1,127 @@
+ 
+    % Button pushed function: impotButton
+
+    % Ask user to pick a file
+    [file, path] = uigetfile({'*.xlsx;*.xls','Excel Files (*.xlsx, *.xls)'; ...
+                              '*.csv','CSV Files (*.csv)'; '*.*','All Files'}, ...
+                              'Select data file');
+    if isequal(file,0)
+        uialert(app.UIFigure, 'No file selected.', 'Import cancelled');
+        return;
+    end
+    filename = fullfile(path,file);
+
+    % Read table
+    try
+        T = readtable(filename, 'ReadVariableNames', true);
+    catch ME
+        uialert(app.UIFigure, sprintf('Error reading file:\n%s', ME.message), 'Read error');
+        return;
+    end
+
+    % Normalize headers to valid MATLAB names
+    origNames = T.Properties.VariableNames;
+    validNames = matlab.lang.makeValidName(origNames);
+    % If duplicates appear, disambiguate by appending _2, _3...
+    if numel(unique(validNames)) < numel(validNames)
+        counts = containers.Map();
+        for k = 1:numel(validNames)
+            nm = validNames{k};
+            if isKey(counts, nm)
+                counts(nm) = counts(nm) + 1;
+                validNames{k} = sprintf('%s_%d', nm, counts(nm));
+            else
+                counts(nm) = 1;
+            end
+        end
+    end
+    T.Properties.VariableNames = validNames;
+
+    % Save table
+    app.DataTable = T;
+
+    % Detect time column (preferred names) or fallback to sample index
+    timeCandidates = {'Time','time','Timestamp','timestamp','t','Sample','sample'};
+    app.TimeVector = [];
+    for k = 1:numel(timeCandidates)
+        nm = matlab.lang.makeValidName(timeCandidates{k});
+        if ismember(nm, T.Properties.VariableNames)
+            app.TimeVector = T.(nm);
+            break;
+        end
+    end
+    if isempty(app.TimeVector)
+        app.TimeVector = (1:height(T))';
+    end
+
+    % === Detect Latitude / Longitude / Altitude columns (common variants) ===
+    app.LatName = '';
+    app.LonName = '';
+    app.AltName = '';
+
+    latnames = {'Latitude','latitude','Lat','lat'};
+    lonnames = {'Longitude','longitude','Lon','lon','Lng','lng'};
+    altnames = {'Altitude','altitude','Alt','alt','Height','height'};
+
+    for k = 1:numel(latnames)
+        nm = matlab.lang.makeValidName(latnames{k});
+        if ismember(nm, T.Properties.VariableNames)
+            app.LatName = nm; break;
+        end
+    end
+    for k = 1:numel(lonnames)
+        nm = matlab.lang.makeValidName(lonnames{k});
+        if ismember(nm, T.Properties.VariableNames)
+            app.LonName = nm; break;
+        end
+    end
+    for k = 1:numel(altnames)
+        nm = matlab.lang.makeValidName(altnames{k});
+        if ismember(nm, T.Properties.VariableNames)
+            app.AltName = nm; break;
+        end
+    end
+
+    % === Build dropdown list: ALL numeric columns EXCEPT Lat/Lon/Alt ===
+    numericMask = varfun(@isnumeric, T, 'OutputFormat', 'uniform');
+    numericCols = T.Properties.VariableNames(numericMask);
+
+    % Remove lat/lon/alt if present in numericCols
+    toRemove = {app.LatName, app.LonName, app.AltName};
+    toRemove(cellfun(@isempty, toRemove)) = []; % drop empty entries
+    if ~isempty(toRemove)
+        numericCols = setdiff(numericCols, toRemove, 'stable');
+    end
+
+    % If numericCols empty (e.g., file only had lat/lon/alt numeric columns),
+    % then fallback to include lat/lon/alt so user can still pick something.
+    if isempty(numericCols)
+        % As a fallback, include all numeric columns (including lat/lon/alt)
+        numericCols = T.Properties.VariableNames(varfun(@isnumeric, T, 'OutputFormat','uniform'));
+    end
+
+    % Final check
+    if isempty(numericCols)
+        uialert(app.UIFigure, 'No numeric columns found to populate dropdown.', 'Import result');
+        return;
+    end
+
+    % Populate dropdown with detected numeric columns (excluding lat/lon/alt)
+    app.DropDown.Items = numericCols;
+    app.SelectedVar = app.DropDown.Items{1};
+    app.DropDown.Value = app.SelectedVar;
+
+    % Inform user what was detected
+    msg = sprintf('Imported %d rows.\nDropdown columns: %s', height(T), strjoin(app.DropDown.Items, ', '));
+    % Show detected lat/lon/alt for clarity (if found)
+    extras = {};
+    if ~isempty(app.LatName); extras{end+1} = ['Lat=' app.LatName]; end
+    if ~isempty(app.LonName); extras{end+1} = ['Lon=' app.LonName]; end
+    if ~isempty(app.AltName); extras{end+1} = ['Alt=' app.AltName]; end
+    if ~isempty(extras)
+        msg = sprintf('%s\nDetected: %s', msg, strjoin(extras, ', '));
+    end
+    uialert(app.UIFigure, msg, 'Import complete');
+
+%end
+
