@@ -1,0 +1,4 @@
+% Value changed function: DropDown
+%function DropDownValueChanged(app, event)
+    app.SelectedVar = app.DropDown.Value;
+%end
