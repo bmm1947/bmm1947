@@ -1,0 +1,9 @@
+  properties (Access = private)
+        
+    DataTable    % table read from Excel
+    TimeVector   % time or sample index
+    SelectedVar  % string: 'p1'|'p2'|'p3'|'p4'
+    LatName    % name of latitude column (string)
+    LonName    % name of longitude column (string)
+    AltName    % name of altitude column (string) % Description
+    end
